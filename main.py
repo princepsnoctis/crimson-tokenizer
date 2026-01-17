@@ -1,62 +1,25 @@
-total_dupes = 0
+from trainer import train, get_vocabulary, encode, decode
 
-def step(bytes):
-    global total_dupes
 
-    pairs = [(bytes[i], bytes[i+1]) for i in range(len(bytes) - 1)]
+# TRAINING
+training_data = """Lorem ipsum dolor sit amet, consectetur adipiscing elit. In finibus metus vel pulvinar convallis. Aliquam et arcu dictum, imperdiet mi ut, pretium mi. Proin efficitur lorem ac diam viverra, et scelerisque sem porta. Nullam volutpat tincidunt tellus aliquet semper. Proin semper, risus ac posuere cursus, nunc ante sagittis nisl, non facilisis purus diam ut nisl. Maecenas vel justo ut est volutpat sollicitudin. Morbi accumsan tellus eu massa interdum congue. Maecenas ac suscipit risus. Cras dictum risus eu ipsum tincidunt, et molestie enim aliquam. Sed vel consequat risus. Aenean accumsan odio augue, a laoreet orci tempus et.
 
-    pair_counts = {}
+Vivamus euismod enim in ex finibus posuere. Phasellus odio massa, rutrum in pellentesque eu, consequat eu magna. Sed mollis ac nibh convallis dignissim. Aliquam id rhoncus augue, sed suscipit est. Suspendisse potenti. In massa diam, faucibus id pulvinar interdum, ullamcorper hendrerit risus. Phasellus varius ipsum quis egestas condimentum.
 
-    for pair in pairs:
-        pair_counts[pair] = pair_counts.get(pair, 0) + 1
+Vestibulum dignissim condimentum condimentum. Mauris ut ante eget ex pretium ornare. Etiam fringilla nisl quis metus dignissim vehicula ac ac massa. Duis ac rhoncus augue. Ut sit amet lorem tortor. Aliquam quis imperdiet massa, eget tristique lorem. Sed egestas ante quam, vel malesuada nunc vulputate a. Curabitur pellentesque iaculis accumsan. In hendrerit tincidunt augue, non vestibulum erat pellentesque in. Nunc rutrum rutrum massa ac sodales. Vestibulum malesuada mattis pulvinar. Ut feugiat non ipsum sed vehicula.
 
-    mac_count = 1
-    max_pair = None
+Donec sed tellus vitae sem tempus interdum. Cras a ante dignissim, interdum leo eu, lacinia sapien. Mauris placerat nisl nec pretium aliquam. Mauris pellentesque justo quis blandit rutrum. Curabitur vestibulum nisi mattis hendrerit ultrices. Maecenas maximus dapibus lectus. Sed sit amet tristique purus. Maecenas non lorem porta, laoreet ante non, aliquet orci. Vestibulum volutpat in diam venenatis facilisis. Duis semper massa ex. Integer eget pretium lacus.
 
-    for pair, count in pair_counts.items():
-        if count > mac_count:
-            mac_count = count
+Aliquam vitae ex eget sapien pulvinar fringilla at sit amet massa. Duis pharetra sed lectus a efficitur. Etiam in scelerisque mi, quis gravida tortor. Maecenas pellentesque, est eget tincidunt placerat, eros sem bibendum magna, non euismod turpis eros finibus erat. Curabitur pharetra nulla sed tempor malesuada. Duis eget interdum dui, at malesuada neque. Vivamus sit amet orci enim. Cras vitae erat tellus. Integer sed porttitor augue. Nunc et augue non orci ultrices posuere a nec velit. Nam at tincidunt lectus. In diam tortor, sodales et nisl aliquet, mollis malesuada ligula."""
 
-            max_pair = pair
+idxs = training_data.encode("utf-8")
 
-    if max_pair is None: return None
+merges = train(idxs, 1193)
 
-    total_dupes += 1
+vocabulary = get_vocabulary(merges)
 
-    new_bytes = []
+# INFERENCE
+text = "Hello World!";                           print("Original bytes:       ", list(text.encode("utf-8")))
 
-    i = 0
-
-    while i < len(bytes) - 1:
-        bt1 = bytes[i]
-        bt2 = bytes[i+1]
-
-        if bt1 == max_pair[0] and bt2 == max_pair[1]:
-            # If it's the most frequent pair then substitute new token.
-            new_bytes.append(0xFF + total_dupes)
-
-            i += 1
-        else:
-            # If it's a regular pair then append the first token, pairs are overlapping in the loop so the second element will be covered in next iteration
-            new_bytes.append(bt1)
-
-            if i == len(bytes) - 2:
-                new_bytes.append(bt2)
-
-        i += 1
-
-    return new_bytes
-
-string = "Hello World! ✅✅✅ 나는 어머니를 먹었다"
-
-bytes = string.encode("utf-8")
-
-new_bytes = bytes
-
-while new_bytes is not None:
-    new_bytes = step(new_bytes)
-
-    if new_bytes is not None:
-        bytes = new_bytes
-
-print(len(bytes))
+encoded_text = encode(text, merges);             print("Bytes of encoded text:", encoded_text)
+decoded_idxs = decode(encoded_text, vocabulary); print("Decoded text:         ", decoded_idxs)
