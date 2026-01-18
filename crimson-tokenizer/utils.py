@@ -1,16 +1,19 @@
-def get_counts(idxs):
+import base64
+
+
+
+def get_counts(idxs, counts=None):
     """
     Given a list of indices returns a dictionary of counts of each
     consecutive pair in that list
     """
-    counts = {}
+
+    if counts is None: counts = {}
 
     for pair in zip(idxs, idxs[1:]):
         counts[pair] = counts.get(pair, 0) + 1
 
     return counts
-
-
 
 def merge(idxs, pair, idx):
     """
@@ -32,7 +35,11 @@ def merge(idxs, pair, idx):
 
     return new_idxs
 
-
-
 def escape(string):
     return string.encode("unicode_escape").decode("utf-8")
+
+def encode_bytes(b: bytes) -> str:
+    return base64.b64encode(b).decode("ascii")
+
+def decode_bytes(s: str) -> bytes:
+    return base64.b64decode(s.encode("ascii"))
