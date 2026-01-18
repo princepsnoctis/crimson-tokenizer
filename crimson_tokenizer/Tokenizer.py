@@ -1,3 +1,5 @@
+from collections import Counter
+
 import regex
 import json
 
@@ -44,12 +46,13 @@ class Tokenizer:
         self.merges = {}
         self.vocabulary = {idx: bytes([idx]) for idx in range(256)}
 
+        # Runs once, not every iteration
+        counts = Counter()
+
+        for part in parts:
+            counts.update(zip(part, part[1:]))
+
         for idx in range(256, vocabulary_size):
-            counts = {}
-
-            for part in parts:
-                counts = get_counts(part, counts)
-
             pair = max(counts, key=counts.get)
 
             if verbose:
@@ -58,15 +61,17 @@ class Tokenizer:
 
                 print(f"{idx-255:6d} | {l!r:32} + {r!r:32} -> {idx!r}")
 
-            parts = [merge(part, pair, idx) for part in parts]
+            parts = [merge(part, pair, idx, counts) for part in parts]
 
             self.merges[pair] = idx
             self.vocabulary[idx] = self.vocabulary[pair[0]] + self.vocabulary[pair[1]]
 
     def _encode_part(self, part):
-        while len(part) > 1:
-            counts = get_counts(part)
+        counts = Counter()
 
+        counts.update(zip(part, part[1:]))
+
+        while len(part) > 1:
             pair = min(counts, key=lambda x: self.merges.get(x, float("inf")))
 
             if pair not in self.merges:
@@ -74,7 +79,7 @@ class Tokenizer:
 
             idx = self.merges[pair]
 
-            part = merge(part, pair, idx)
+            part = merge(part, pair, idx, counts)
 
         return part
 

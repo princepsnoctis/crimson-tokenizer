@@ -15,7 +15,7 @@ def get_counts(idxs, counts=None):
 
     return counts
 
-def merge(idxs, pair, idx):
+def merge(idxs, pair, idx, counts):
     """
     Given a list of indices, a pair to merge and a new index to replace
     the pair with, replaces all consecutive pairs occurring in that
@@ -27,6 +27,31 @@ def merge(idxs, pair, idx):
 
     while i < len(idxs):
         if i + 1 < len(idxs) and idxs[i] == pair[0] and idxs[i+1] == pair[1]:
+            """
+            When merging (a, b, c, d, e, f) -> (a, b, X, e, f)  only 5 pairs are affected:
+            (a, b) -> unaffected
+            (b, c) -> removed
+            (c, d) -> removed
+            (d, e) -> removed
+            (e, f) -> unaffected
+            
+            (b, X) -> added
+            (X, e) -> added
+            """
+
+            prev = new_idxs[-1] if new_idxs else None         # idx before pair
+            next = idxs[i + 2] if i + 2 < len(idxs) else None # idx after pair
+
+            counts[pair] -= 1 # Decrease the count for merged pair because it disappears
+
+            if prev is not None:
+                _decrease(counts, (prev, pair[0]))
+                counts[(prev, idx)]     += 1
+
+            if next is not None:
+                _decrease(counts, (pair[1], next))
+                counts[(idx, next)]     += 1
+
             new_idxs.append(idx)
             i += 2
         else:
@@ -43,3 +68,9 @@ def encode_bytes(b: bytes) -> str:
 
 def decode_bytes(s: str) -> bytes:
     return base64.b64decode(s.encode("ascii"))
+
+def _decrease(counts, pair):
+    counts[pair] -= 1
+
+    if counts[pair] <= 0:
+        del counts[pair]
