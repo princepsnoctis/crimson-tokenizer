@@ -38,7 +38,6 @@ def merge(idxs, pair, idx, counts):
             (b, X) -> added
             (X, e) -> added
             """
-
             prev = new_idxs[-1] if new_idxs else None         # idx before pair
             next = idxs[i + 2] if i + 2 < len(idxs) else None # idx after pair
 

@@ -1,4 +1,5 @@
-from collections import Counter
+from collections import Counter, defaultdict
+import heapq
 
 import regex
 import json
@@ -27,94 +28,181 @@ class Tokenizer:
         self.vocabulary = {}
 
         self.regex_pattern = regex_pattern
-        self.compiled_regex_pattern = regex.compile(regex_pattern, regex.VERBOSE)
+        self.compiled_regex_pattern = regex.compile(self.regex_pattern, regex.VERBOSE)
 
         self.special_tokens = {} # TODO
 
     def train(self, text, vocabulary_size, verbose=False):
         """
-        Given text and a target vocabulary size, it encodes text to bytes,
-        finds the most frequent byte pair, merges all such pairs into a
-        new index, and repeats until the vocabulary reaches the target size.
-        It updates self.merge and self.vocabulary.
+        Trains the tokenizer on provided text until it reaches target vocabulary size.
         """
         assert vocabulary_size > 255
 
-        parts = regex.findall(self.compiled_regex_pattern, text)
-        parts = [part.encode("utf-8") for part in parts]
+        # Chunk text according to regex
+        chunks = regex.findall(self.compiled_regex_pattern, text)
+        chunks = [chunk.encode("utf-8") for chunk in chunks]
 
+        # Fill nodes and heads
+        nodes = []
+        heads = []
+
+        def _add_chunk(chunk):
+            head = None
+            prev = None
+
+            for token in chunk:
+                node_idx = len(nodes)
+
+                nodes.append([token, prev, None])
+
+                if prev is not None:
+                    nodes[prev][2] = node_idx
+
+                if head is None:
+                    head = node_idx
+
+                prev = node_idx
+
+            if head is not None:
+                heads.append(head)
+
+        for chunk in chunks:
+            _add_chunk(chunk)
+
+        # Fill pairs
+        pairs = defaultdict(set)
+
+        for head in heads:
+            this = head
+
+            while nodes[this][2] is not None:
+                next = nodes[this][2]
+
+                pair = (nodes[this][0], nodes[next][0])
+
+                pairs[pair].add(this)
+
+                this = next
+
+        # Create heap for efficient most frequent pair picking
+        heap = [(-len(positions), pair) for pair, positions in pairs.items()]
+        heapq.heapify(heap)
+
+        # Merge repeatedly
         self.merges = {}
         self.vocabulary = {idx: bytes([idx]) for idx in range(256)}
 
-        # Runs once, not every iteration
-        counts = Counter()
-
-        for part in parts:
-            counts.update(zip(part, part[1:]))
-
         for idx in range(256, vocabulary_size):
-            pair = max(counts, key=counts.get)
+            # Pick the most frequent pair
+            while heap:
+                negative_count, pair = heapq.heappop(heap)
+
+                if pair not in pairs or -negative_count != len(pairs[pair]):
+                    continue # stale entry
+
+                break
+            else:
+                break # no pairs left
+
+            positions = list(pairs[pair])
+            pairs[pair].clear()
+
+            for position in positions:
+                """
+                Situation:
+                ..., a, b, prev, this, that, next, y, z, ...
+                """
+                this = position
+                that = nodes[position][2]
+
+                if that is None:
+                    continue
+
+                if (nodes[this][0], nodes[that][0]) != pair:
+                    continue
+
+                prev = nodes[this][1]
+                next = nodes[that][2]
+
+                nodes[this][0] = idx  # create merged node
+                nodes[this][2] = next # remove that node
+
+                if next is not None:
+                    nodes[next][1] = this
+
+                if prev is not None:
+                    old = (nodes[prev][0], pair[0])
+                    pairs[old].discard(prev)
+
+                    new = (nodes[prev][0], idx)
+                    pairs[new].add(prev)
+
+                    heapq.heappush(heap, (-len(pairs[new]), new))
+
+                if next is not None:
+                    old = (pair[1], nodes[next][0])
+                    pairs[old].discard(that)
+
+                    new = (idx, nodes[next][0])
+                    pairs[new].add(next)
+
+                    heapq.heappush(heap, (-len(pairs[new]), new))
 
             if verbose:
                 l = escape(self.decode([pair[0]]))
                 r = escape(self.decode([pair[1]]))
 
-                print(f"{idx-255:6d} | {l!r:32} + {r!r:32} -> {idx!r}")
-
-            parts = [merge(part, pair, idx, counts) for part in parts]
+                print(f"{idx - 255:6d} | {l!r:32} + {r!r:32} -> {idx!r}")
 
             self.merges[pair] = idx
             self.vocabulary[idx] = self.vocabulary[pair[0]] + self.vocabulary[pair[1]]
 
-    def _encode_part(self, part):
+    def _encode_chunk(self, chunk):
         counts = Counter()
 
-        counts.update(zip(part, part[1:]))
+        counts.update(zip(chunk, chunk[1:]))
 
-        while len(part) > 1:
+        while len(chunk) > 1:
             pair = min(counts, key=lambda x: self.merges.get(x, float("inf")))
 
             if pair not in self.merges:
                 break
 
-            idx = self.merges[pair]
+            token = self.merges[pair]
 
-            part = merge(part, pair, idx, counts)
+            chunk = merge(chunk, pair, token, counts)
 
-        return part
+        return chunk
 
     def encode(self, text):
         """
-        Given text it turns it into a list of bytes and repeatedly applies
-        the highest-priority merge learned during training until no merges apply.
-        Returns a list of indices.
+        Encodes the text into tokens
         """
-        parts = regex.findall(self.compiled_regex_pattern, text)
-        parts = [part.encode("utf-8") for part in parts]
+        chunks = regex.findall(self.compiled_regex_pattern, text)
+        chunks = [chunk.encode("utf-8") for chunk in chunks]
 
-        idxs = []
+        tokens = []
 
-        for part in parts:
-            part = self._encode_part(part)
+        for chunk in chunks:
+            chunk = self._encode_chunk(chunk)
 
-            idxs.extend(part)
+            tokens.extend(chunk)
 
-        return idxs
+        return tokens
 
-    def decode(self, idxs):
+    def decode(self, tokens):
         """
-        Given a list of indices it expands them into bytes and decodes UTF-8.
-        Returns the decoded text.
+        Decodes the tokens into text
         """
-        idxs = b"".join(self.vocabulary[idx] for idx in idxs)
+        tokens = b"".join(self.vocabulary[token] for token in tokens)
 
-        text = idxs.decode("utf-8", errors="replace")
+        text = tokens.decode("utf-8", errors="replace")
 
         return text
 
     def save(self, path):
-        merges = {idx: list(pair) for pair, idx in self.merges.items()}
-        vocabulary = {idx: encode_bytes(byte) for idx, byte in self.vocabulary.items()}
+        merges = {token: list(pair) for pair, token in self.merges.items()}
+        vocabulary = {token: encode_bytes(byte) for token, byte in self.vocabulary.items()}
 
         data = {
             "name":           "crimson-tokenizer",
@@ -126,7 +214,7 @@ class Tokenizer:
         }
 
         with open(path, "w", encoding="utf-8") as file:
-            json.dump(data, file, indent=4)
+            json.dump(data, file)
 
     def load(self, path):
         with open(path, "r", encoding="utf-8") as file:
@@ -138,8 +226,8 @@ class Tokenizer:
 
         match version:
             case "v1":
-                merges = {tuple(pair): int(idx) for idx, pair in data["merges"].items()}
-                vocabulary = {int(idx): decode_bytes(byte) for idx, byte in data["vocabulary"].items()}
+                merges = {tuple(pair): int(token) for token, pair in data["merges"].items()}
+                vocabulary = {int(token): decode_bytes(byte) for token, byte in data["vocabulary"].items()}
 
                 self.regex_pattern =  data["regex_pattern"]
                 self.special_tokens = data["special_tokens"]
