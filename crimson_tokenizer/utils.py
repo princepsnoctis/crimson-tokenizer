@@ -42,7 +42,7 @@ def merge(idxs, pair, idx, counts):
             prev = new_idxs[-1] if new_idxs else None         # idx before pair
             next = idxs[i + 2] if i + 2 < len(idxs) else None # idx after pair
 
-            counts[pair] -= 1 # Decrease the count for merged pair because it disappears
+            _decrease(counts, pair) # Decrease the count for merged pair because it disappears
 
             if prev is not None:
                 _decrease(counts, (prev, pair[0]))
